@@ -115,7 +115,7 @@ def Euler_Tour(multigraph):
 				current_node = edge[1]
 				multigraph.remove_edge(edge[0], edge[1], key=None)
 				break
-			else:
+			elif len(multigraph.edges(current_node)) == 1:
 				tour.append(edge[1])
 				current_node = edge[1]
 				multigraph.remove_edge(edge[0], edge[1], key=None)

@@ -19,6 +19,7 @@ import math
 
 # -----------------------------------Params-----------------------------------
 INITIAL_SCAN_DISTANCE_PROPORTION = 0.5
+ACCEPTABLE_CORRECTION = 0.5
 FLOWER_LOCATION_TOLERANCE = 0.15
 MAX_SCAN_ATTEMPTS = 5
 ACCEPTABLE_PROXIMITY = 0.05
@@ -26,7 +27,7 @@ RADIUS_STEP_SIZE = 0.01
 ROBOT_REACH_RADIUS = 0.6258  # Empirically tested
 NUM_IMGS_PER_SCAN = 8
 MIN_SUFFICIENT_VIEWPOINTS = 4  # Minimum of 2
-MAX_OUTLIER_TOLERANCE = 6
+MAX_OUTLIER_PERCENTAGE_TOLERANCE = 1/4
 PLANT_LOCATION = Point(0.6, 0, 0.25)
 ROBOT_BASE_LOCATION = (0, 0, 0)
 CAMERA_TOPIC = "/usb_cam/camera1/image_raw"
@@ -342,9 +343,12 @@ def sample_upper_sphere_within_reach(center, radius, robot_base):
 	global arm
 	sampled_location = None
 	while radius > 0:
-		for _ in range(MAX_SCAN_ATTEMPTS * 10000):
+		for _ in range(MAX_SCAN_ATTEMPTS * 100):
 			sampled_location = sample_upper_sphere(center, radius)
-			if get_distance(sampled_location, robot_base) <= ROBOT_REACH_RADIUS and arm.plan().joint_trajectory.points:
+			
+			# arm.set_start_state_to_current_state()
+			# arm.set_pose_target(sampled_location, gripper)
+			if get_distance(sampled_location, robot_base) <= ROBOT_REACH_RADIUS: # and arm.plan().joint_trajectory.points:
 				return sampled_location
 		radius -= RADIUS_STEP_SIZE  # if attempted distance is too far for robot to reach
 		print("Robot only managed to reach point at radius of " + str(radius))
@@ -403,7 +407,7 @@ def find_flower(distance_from_flower, flower_location, vid):
 	# Ensure locations found for the flower match up to within FLOWER_LOCATION_TOLERANCE, else raise FlowerNotFoundError
 	num_neighbors = sum(get_distance(location1, location2) <= FLOWER_LOCATION_TOLERANCE for location1, location2 in combinations(flower_locations, 2))
 	num_combinations = len(flower_locations) * (len(flower_locations) - 1) / 2  # Analytically computed len(combinations(location_img_coord_pairs, 2))
-	if num_combinations - num_neighbors > MAX_OUTLIER_TOLERANCE:
+	if (num_combinations - num_neighbors) / num_combinations > MAX_OUTLIER_PERCENTAGE_TOLERANCE:
 		print("Took " + str(len(location_img_coord_pairs)) + " successful pictures of flower, but " \
 			  + str(num_combinations - num_neighbors) + " pairs of my estimations for its locations are too far apart.")
 		print("Distances between estimations: " + str(["{:.3f}".format(get_distance(location1, location2)) for location1, location2 in combinations(flower_locations, 2)]))
@@ -424,9 +428,14 @@ def HW_part1():
 	while get_distance(get_camera_pose().position, flower_location) >= ACCEPTABLE_PROXIMITY:
 		for flower_scan_attempt_no in range(MAX_SCAN_ATTEMPTS):
 			try:
-				flower_location = find_flower(radius, flower_location, vid)
+				new_flower_location = find_flower(radius, flower_location, vid)
+				if get_distance(new_flower_location, flower_location) > ACCEPTABLE_CORRECTION:
+					raise FlowerNotFoundError("too large of a correction was predicted: \n" + new_flower_location + "\n")
+					continue
+				flower_location = new_flower_location
 				print("Concluded that flower is located at \n" + str(flower_location) + "\nMoving closer.\n\n\n")
 				radius -= RADIUS_STEP_SIZE
+				break
 			except FlowerNotFoundError as flower_detection_error:
 				print("Attempt number " + str(flower_scan_attempt_no + 1) + " failed: flower not found because " + str(flower_detection_error) + "\n")
 				continue
